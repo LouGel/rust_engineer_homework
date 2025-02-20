@@ -19,9 +19,6 @@ pub enum Error {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
-    #[error("Gas estimation failed: {0}")]
-    GasEstimation(String),
-
     #[error("Server error: {0}")]
     Server(String),
 }
@@ -33,7 +30,6 @@ impl IntoResponse for Error {
             Error::Config(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             Error::Provider(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             Error::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
-            Error::GasEstimation(msg) => (StatusCode::BAD_REQUEST, msg),
             Error::Server(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
@@ -54,7 +50,6 @@ impl Error {
             Error::Config(_) => "configuration_error",
             Error::Provider(_) => "provider_error",
             Error::InvalidInput(_) => "invalid_input",
-            Error::GasEstimation(_) => "gas_estimation_error",
             Error::Server(_) => "server_error",
         }
     }
