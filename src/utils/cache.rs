@@ -12,7 +12,6 @@ lazy_static::lazy_static! {
 }
 
 pub async fn cached_gas_price(provider: Arc<RootProvider>, ttl: Duration) -> eyre::Result<u128> {
-    // Si ttl vaut 0, on n'utilise pas le cache
     if ttl == Duration::from_secs(0) {
         tracing::debug!("TTL is 0: bypassing cache");
         return Ok(provider.get_gas_price().await?);
@@ -32,7 +31,6 @@ pub async fn cached_gas_price(provider: Arc<RootProvider>, ttl: Duration) -> eyr
     tracing::debug!("Fetching fresh gas price from provider");
     let gas_price = provider.get_gas_price().await?;
 
-    // Mise à jour du cache
     cache.insert(CACHE_KEY.to_string(), (gas_price, Instant::now()));
 
     Ok(gas_price)
@@ -45,6 +43,7 @@ pub struct CachedGasPriceFuture {
 }
 
 enum CacheState {
+    #[allow(dead_code)]
     Init,
     CheckingCache {
         cache_future: Pin<Box<dyn Future<Output = Option<(u128, Instant)>> + Send>>,
@@ -56,16 +55,6 @@ enum CacheState {
         gas_price: u128,
         update_future: Pin<Box<dyn Future<Output = ()> + Send>>,
     },
-}
-
-impl CachedGasPriceFuture {
-    pub fn new(provider: Arc<RootProvider>, ttl: Duration) -> Self {
-        Self {
-            provider,
-            ttl,
-            state: CacheState::Init,
-        }
-    }
 }
 
 impl Future for CachedGasPriceFuture {
@@ -152,39 +141,5 @@ impl Future for CachedGasPriceFuture {
                 }
             }
         }
-    }
-}
-
-/// Additional utility: cached block-based metrics
-pub struct BlockMetricsCache {
-    provider: Arc<RootProvider>,
-    ttl: Duration,
-    last_block: Mutex<Option<(u64, Instant)>>,
-}
-
-impl BlockMetricsCache {
-    pub fn new(provider: Arc<RootProvider>, ttl: Duration) -> Self {
-        Self {
-            provider,
-            ttl,
-            last_block: Mutex::new(None),
-        }
-    }
-
-    /// Get latest block number with caching
-    pub async fn get_latest_block_number(&self) -> eyre::Result<u64> {
-        let mut cache = self.last_block.lock().await;
-
-        if let Some((block_number, timestamp)) = *cache {
-            if timestamp.elapsed() < self.ttl {
-                return Ok(block_number);
-            }
-        }
-
-        let block_number = self.provider.get_block_number().await?;
-
-        *cache = Some((block_number, Instant::now()));
-
-        Ok(block_number)
     }
 }
