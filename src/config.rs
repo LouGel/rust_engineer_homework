@@ -24,7 +24,7 @@ impl AppConfig {
         };
 
         let cache_duration_secs = std::env::var("CACHE_DURATION_SECONDS")
-            .unwrap_or_else(|_| "15".into())
+            .unwrap_or_else(|_| "0".into())
             .parse::<u64>()
             .map_err(|_| Error::Config("Invalid CACHE_DURATION_SECS".into()))?;
 

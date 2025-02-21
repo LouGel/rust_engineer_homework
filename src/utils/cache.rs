@@ -12,8 +12,13 @@ lazy_static::lazy_static! {
 }
 
 pub async fn cached_gas_price(provider: Arc<RootProvider>, ttl: Duration) -> eyre::Result<u128> {
-    const CACHE_KEY: &str = "gas_price";
+    // Si ttl vaut 0, on n'utilise pas le cache
+    if ttl == Duration::from_secs(0) {
+        tracing::debug!("TTL is 0: bypassing cache");
+        return Ok(provider.get_gas_price().await?);
+    }
 
+    const CACHE_KEY: &str = "gas_price";
     let mut cache = PRICE_CACHE.lock().await;
 
     if let Some((price, timestamp)) = cache.get(CACHE_KEY) {
@@ -27,7 +32,7 @@ pub async fn cached_gas_price(provider: Arc<RootProvider>, ttl: Duration) -> eyr
     tracing::debug!("Fetching fresh gas price from provider");
     let gas_price = provider.get_gas_price().await?;
 
-    // Update cache
+    // Mise à jour du cache
     cache.insert(CACHE_KEY.to_string(), (gas_price, Instant::now()));
 
     Ok(gas_price)
