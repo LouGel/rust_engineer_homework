@@ -1,7 +1,4 @@
-use ethers::{
-    providers::{Http, Middleware, Provider},
-    types::U256,
-};
+use alloy_provider::{Provider, RootProvider};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -11,10 +8,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 lazy_static::lazy_static! {
-    static ref PRICE_CACHE: Mutex<HashMap<String, (U256, Instant)>> = Mutex::new(HashMap::new());
+    static ref PRICE_CACHE: Mutex<HashMap<String, (u128, Instant)>> = Mutex::new(HashMap::new());
 }
 
-pub async fn cached_gas_price(provider: Arc<Provider<Http>>, ttl: Duration) -> eyre::Result<U256> {
+pub async fn cached_gas_price(provider: Arc<RootProvider>, ttl: Duration) -> eyre::Result<u128> {
     const CACHE_KEY: &str = "gas_price";
 
     let mut cache = PRICE_CACHE.lock().await;
@@ -37,7 +34,7 @@ pub async fn cached_gas_price(provider: Arc<Provider<Http>>, ttl: Duration) -> e
 }
 
 pub struct CachedGasPriceFuture {
-    provider: Arc<Provider<Http>>,
+    provider: Arc<RootProvider>,
     ttl: Duration,
     state: CacheState,
 }
@@ -45,19 +42,19 @@ pub struct CachedGasPriceFuture {
 enum CacheState {
     Init,
     CheckingCache {
-        cache_future: Pin<Box<dyn Future<Output = Option<(U256, Instant)>> + Send>>,
+        cache_future: Pin<Box<dyn Future<Output = Option<(u128, Instant)>> + Send>>,
     },
     FetchingFromProvider {
-        provider_future: Pin<Box<dyn Future<Output = eyre::Result<U256>> + Send>>,
+        provider_future: Pin<Box<dyn Future<Output = eyre::Result<u128>> + Send>>,
     },
     UpdatingCache {
-        gas_price: U256,
+        gas_price: u128,
         update_future: Pin<Box<dyn Future<Output = ()> + Send>>,
     },
 }
 
 impl CachedGasPriceFuture {
-    pub fn new(provider: Arc<Provider<Http>>, ttl: Duration) -> Self {
+    pub fn new(provider: Arc<RootProvider>, ttl: Duration) -> Self {
         Self {
             provider,
             ttl,
@@ -67,7 +64,7 @@ impl CachedGasPriceFuture {
 }
 
 impl Future for CachedGasPriceFuture {
-    type Output = eyre::Result<U256>;
+    type Output = eyre::Result<u128>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.as_mut().get_mut();
@@ -155,13 +152,13 @@ impl Future for CachedGasPriceFuture {
 
 /// Additional utility: cached block-based metrics
 pub struct BlockMetricsCache {
-    provider: Arc<Provider<Http>>,
+    provider: Arc<RootProvider>,
     ttl: Duration,
     last_block: Mutex<Option<(u64, Instant)>>,
 }
 
 impl BlockMetricsCache {
-    pub fn new(provider: Arc<Provider<Http>>, ttl: Duration) -> Self {
+    pub fn new(provider: Arc<RootProvider>, ttl: Duration) -> Self {
         Self {
             provider,
             ttl,
@@ -180,10 +177,9 @@ impl BlockMetricsCache {
         }
 
         let block_number = self.provider.get_block_number().await?;
-        let block_number_u64 = block_number.as_u64();
 
-        *cache = Some((block_number_u64, Instant::now()));
+        *cache = Some((block_number, Instant::now()));
 
-        Ok(block_number_u64)
+        Ok(block_number)
     }
 }
