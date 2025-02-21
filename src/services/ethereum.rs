@@ -1,7 +1,7 @@
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::{utils::format_ether, Address, Bytes, U256};
 use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types::{TransactionInput as TxData, TransactionRequest};
-use std::{str::FromStr, sync::Arc, time::Duration, u128};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use crate::{
     config::AppConfig,
@@ -10,8 +10,7 @@ use crate::{
     utils::cache::cached_gas_price,
 };
 
-const DEFAULT_PRIORITY_FEE: u128 = 1_500_000_000; // 1.5 Gwei
-const WEI_PER_ETH: f64 = 1_000_000_000_000_000_000f64;
+const DEFAULT_PRIORITY_FEE: u128 = 1_500_000_000;
 
 #[derive(Clone)]
 pub struct EthereumService {
@@ -21,14 +20,14 @@ pub struct EthereumService {
 
 impl EthereumService {
     pub async fn new(config: &AppConfig) -> Result<Self> {
-        let provider = RootProvider::new_http(
-            config
-                .ethereum_rpc_url
-                .parse()
-                .map_err(|e| Error::Config(format!("Not valid url :{:?}", e)))?,
-        );
+        let url = config.ethereum_rpc_url.parse().map_err(|e| {
+            Error::Config(format!(
+                "Not valid URL '{}': {:?}",
+                config.ethereum_rpc_url, e
+            ))
+        })?;
+        let provider = RootProvider::new_http(url);
 
-        // Test provider connection
         provider
             .get_block_number()
             .await
@@ -44,7 +43,6 @@ impl EthereumService {
         let transaction = self.build_transaction_request(&tx)?;
         let tx_type = self.determine_transaction_type(&tx);
 
-        // Parallel fetching of gas price and limit
         let (gas_price, gas_limit) = tokio::join!(
             self.get_gas_price(tx_type.clone(), &tx),
             self.provider.estimate_gas(&transaction)
@@ -68,21 +66,15 @@ impl EthereumService {
     fn build_transaction_request(&self, tx: &TransactionInput) -> Result<TransactionRequest> {
         let mut transaction = TransactionRequest::default();
 
-        // Set addresses
         transaction.from = Some(parse_address(&tx.from)?);
         transaction.to = Some(parse_address(&tx.to)?.into());
 
-        // Set optional data
         if let Some(data) = &tx.data {
             transaction.input = TxData::new(parse_bytes(data)?);
         }
-
-        // Set optional value
         if let Some(value) = &tx.value {
             transaction.value = Some(parse_u256(value)?);
         }
-
-        // Set gas parameters
         if let Some(max_fee) = &tx.max_fee_per_gas {
             transaction.max_fee_per_gas = Some(parse_u128(max_fee)?);
         }
@@ -115,10 +107,9 @@ impl EthereumService {
         if let Some(gas_price_str) = &tx.gas_price {
             return Ok(parse_u128(gas_price_str)?);
         }
-
-        Ok(cached_gas_price(self.provider.clone(), self.cache_duration)
+        cached_gas_price(self.provider.clone(), self.cache_duration)
             .await
-            .map_err(|e| Error::Provider(format!("Failed to get gas price: {}", e)))?)
+            .map_err(|e| Error::Provider(format!("Failed to get gas price: {}", e)))
     }
 
     async fn get_eip1559_gas_price(&self, tx: &TransactionInput) -> Result<u128> {
@@ -144,7 +135,6 @@ impl EthereumService {
     }
 }
 
-// Helper functions for parsing
 fn parse_address(input: &str) -> Result<Address> {
     Address::from_str(input).map_err(|_| Error::InvalidInput(format!("Invalid address: {}", input)))
 }
@@ -158,25 +148,24 @@ fn parse_u256(input: &str) -> Result<U256> {
 }
 
 fn parse_u128(input: &str) -> Result<u128> {
-    u128::from_str(input).map_err(|_| Error::InvalidInput("Invalid u128 value".into()))
-}
-
-fn format_ether(wei: u128) -> String {
-    let ether_value = wei as f64 / WEI_PER_ETH;
-    format!("{:.18}", ether_value)
+    input
+        .parse::<u128>()
+        .map_err(|_| Error::InvalidInput("Invalid u128 value".into()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::IpAddr;
+    use std::str::FromStr;
     use std::time::Duration;
 
-    // Helper function to create a test config
+    /// Crée une configuration de test.
     fn create_test_config() -> AppConfig {
         AppConfig {
             ethereum_rpc_url: "https://eth.llamarpc.com".to_string(),
             cache_duration: Duration::from_secs(15),
-            host: std::net::IpAddr::from_str("127.0.0.1").unwrap(),
+            host: IpAddr::from_str("127.0.0.1").unwrap(),
             port: 8080,
             log_level: "debug".to_string(),
         }
@@ -220,12 +209,10 @@ mod tests {
 
         let result = service.estimate_gas(tx).await;
         assert!(result.is_err());
-        // Check if error contains "execution reverted"
-        match result {
-            Err(Error::GasEstimation(msg)) => {
-                assert!(msg.contains("execution reverted"));
-            }
-            _ => panic!("Expected GasEstimation error"),
+        if let Err(Error::GasEstimation(msg)) = result {
+            assert!(msg.contains("execution reverted"));
+        } else {
+            panic!("Expected GasEstimation error");
         }
     }
 
@@ -267,11 +254,10 @@ mod tests {
 
         let result = service.estimate_gas(tx).await;
         assert!(result.is_err());
-        match result {
-            Err(Error::InvalidInput(msg)) => {
-                assert!(msg.contains("Invalid address"));
-            }
-            _ => panic!("Expected InvalidInput error"),
+        if let Err(Error::InvalidInput(msg)) = result {
+            assert!(msg.contains("Invalid address"));
+        } else {
+            panic!("Expected InvalidInput error");
         }
     }
 

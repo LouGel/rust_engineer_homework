@@ -1,23 +1,21 @@
 // tests/integration_tests.rs
 
+use alloy_node_bindings::{Anvil, AnvilInstance};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use eth_gas_estimator::{app::create_app, config::AppConfig};
-use ethers_core::utils::{Anvil, AnvilInstance};
 use serde_json::json;
 use std::time::Duration;
 use tower::ServiceExt;
 
 async fn setup_test_app() -> (axum::Router, AnvilInstance) {
-    // Setup forked node
     let anvil = Anvil::new()
         .fork("https://eth.llamarpc.com")
         .fork_block_number(18_000_000u64)
         .spawn();
 
-    // Create test config
     let config = AppConfig {
         ethereum_rpc_url: anvil.endpoint(),
         cache_duration: Duration::from_secs(15),
@@ -26,7 +24,6 @@ async fn setup_test_app() -> (axum::Router, AnvilInstance) {
         log_level: "debug".to_string(),
     };
 
-    // Initialize app
     let app = create_app(config).await.expect("Failed to create app");
 
     (app, anvil)
@@ -34,10 +31,8 @@ async fn setup_test_app() -> (axum::Router, AnvilInstance) {
 
 #[tokio::test]
 async fn test_gas_estimation_endpoint() {
-    // Setup
     let (app, _anvil) = setup_test_app().await;
 
-    // Test valid ETH transfer
     let valid_request = Request::builder()
         .method("POST")
         .uri("/api/v1/estimate-gas")
