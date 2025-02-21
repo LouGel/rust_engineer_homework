@@ -4,12 +4,13 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Deserialize)]
 pub enum Error {
     #[error("Configuration error: {0}")]
     Config(String),

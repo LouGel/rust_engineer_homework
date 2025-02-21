@@ -46,6 +46,9 @@ url = "2.5.4"
 [dev-dependencies]
 mockall = "0.13.1"
 axum-test = "17.2.0"
+ethers-core = "2.0.14"
+anvil = "0.2.2"
+hyper = "0.14.13"
 test-log = { version = "0.2", features = ["trace"] }
 assert_matches = "1.5"
 

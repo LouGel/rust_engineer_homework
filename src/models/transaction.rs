@@ -12,7 +12,7 @@ pub struct TransactionInput {
     pub _nonce: Option<u64>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GasEstimation {
     pub gas_limit: String,
     pub gas_price: String,
