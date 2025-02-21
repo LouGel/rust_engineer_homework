@@ -1,12 +1,11 @@
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_provider::{Provider, RootProvider};
 use alloy_rpc_types::{TransactionInput as TxData, TransactionRequest};
-use eyre::Result;
 use std::{str::FromStr, sync::Arc, time::Duration, u128};
 
 use crate::{
     config::AppConfig,
-    error::Error,
+    error::{Error, Result},
     models::transaction::{GasEstimation, TransactionInput, TransactionType},
     utils::cache::cached_gas_price,
 };
@@ -22,7 +21,12 @@ pub struct EthereumService {
 
 impl EthereumService {
     pub async fn new(config: &AppConfig) -> Result<Self> {
-        let provider = RootProvider::new_http(config.ethereum_rpc_url.parse()?);
+        let provider = RootProvider::new_http(
+            config
+                .ethereum_rpc_url
+                .parse()
+                .map_err(|e| Error::Config(format!("Not valid url :{:?}", e)))?,
+        );
 
         // Test provider connection
         provider
@@ -47,7 +51,7 @@ impl EthereumService {
         );
 
         let gas_price = gas_price?;
-        let gas_limit = gas_limit.map_err(|e| Error::Provider(format!("{}", e)))?;
+        let gas_limit = gas_limit.map_err(Error::from)?;
 
         let total_cost = gas_price.saturating_mul(gas_limit.into());
 
@@ -141,19 +145,19 @@ impl EthereumService {
 }
 
 // Helper functions for parsing
-fn parse_address(input: &str) -> Result<Address, Error> {
+fn parse_address(input: &str) -> Result<Address> {
     Address::from_str(input).map_err(|_| Error::InvalidInput(format!("Invalid address: {}", input)))
 }
 
-fn parse_bytes(input: &str) -> Result<Bytes, Error> {
+fn parse_bytes(input: &str) -> Result<Bytes> {
     Bytes::from_str(input).map_err(|_| Error::InvalidInput("Invalid transaction data".into()))
 }
 
-fn parse_u256(input: &str) -> Result<U256, Error> {
+fn parse_u256(input: &str) -> Result<U256> {
     U256::from_str(input).map_err(|_| Error::InvalidInput("Invalid U256 value".into()))
 }
 
-fn parse_u128(input: &str) -> Result<u128, Error> {
+fn parse_u128(input: &str) -> Result<u128> {
     u128::from_str(input).map_err(|_| Error::InvalidInput("Invalid u128 value".into()))
 }
 

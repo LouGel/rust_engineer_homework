@@ -2,7 +2,7 @@
 name = "eth-gas-estimator"
 version = "0.1.0"
 edition = "2021"
-authors = ["Louis Gelinet <l.gelinet@protonmil.ch>"]
+authors = ["Louis Gelinet <l.gelinet@protonmail.ch>"]
 description = "A high-performance Ethereum gas estimator service"
 readme = "README.md"
 repository = "https://github.com/lougel/eth-gas-estimator"

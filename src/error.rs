@@ -1,4 +1,4 @@
-use alloy_provider::{Provider, ProviderBuilder};
+use alloy_json_rpc::RpcError;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -13,22 +13,19 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("Configuration error: {0}")]
     Config(String),
-
     #[error("Ethereum provider error: {0}")]
     Provider(String),
-
     #[error("Invalid input: {0}")]
     InvalidInput(String),
-
     #[error("Gas estimation failed: {0}")]
     GasEstimation(String),
-
     #[error("Server error: {0}")]
     Server(String),
 }
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
+        let err_type = self.error_type();
         let (status, error_message) = match self {
             Error::Config(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             Error::Provider(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
@@ -40,7 +37,7 @@ impl IntoResponse for Error {
         let body = Json(json!({
             "error": {
                 "message": error_message,
-                "type": "lol",
+                "type": err_type  // Use the error_type method here
             }
         }));
 
@@ -49,7 +46,7 @@ impl IntoResponse for Error {
 }
 
 impl Error {
-    fn error_type(&self) -> &'static str {
+    pub fn error_type(&self) -> &'static str {
         match self {
             Error::Config(_) => "configuration_error",
             Error::Provider(_) => "provider_error",
@@ -60,40 +57,36 @@ impl Error {
     }
 }
 
-// // Convert RPC errors from alloy
-// impl From<RpcError> for Error {
-//     fn from(err: RpcError) -> Self {
-//         match err {
-//             RpcError::JsonRpcError(e) if e.message.contains("execution reverted") => {
-//                 Error::GasEstimation("Transaction would fail: execution reverted".into())
-//             }
-//             RpcError::JsonRpcError(e) if e.message.contains("gas required exceeds allowance") => {
-//                 Error::GasEstimation(
-//                     "Transaction would fail: gas required exceeds allowance".into(),
-//                 )
-//             }
-//             e => Error::Provider(format!("RPC error: {}", e)),
-//         }
-//     }
-// }
-
-// Convert URL parsing errors
-impl From<url::ParseError> for Error {
-    fn from(err: url::ParseError) -> Self {
-        Error::Config(format!("Invalid URL: {}", err))
+impl<T> From<RpcError<T>> for Error {
+    fn from(error: RpcError<T>) -> Self {
+        match error {
+            RpcError::ErrorResp(payload) => {
+                let message = payload.message.to_lowercase();
+                if message.contains("execution reverted") {
+                    Error::GasEstimation(format!(
+                        "Transaction would fail: Details: {}",
+                        payload.message
+                    ))
+                } else if message.contains("gas required exceeds allowance") {
+                    Error::GasEstimation(
+                        "Transaction would fail: gas required exceeds allowance".into(),
+                    )
+                } else {
+                    Error::Provider(format!("RPC error: {}", payload.message))
+                }
+            }
+            RpcError::Transport(_) => Error::Provider(format!("Transport error")),
+            RpcError::NullResp => Error::Provider("Received null response".into()),
+            RpcError::SerError(e) => Error::Provider(format!("Serialization error: {}", e)),
+            RpcError::DeserError { err, text } => {
+                Error::Provider(format!("Deserialization error: {} for text: {}", err, text))
+            }
+            RpcError::UnsupportedFeature(msg) => {
+                Error::Provider(format!("Unsupported feature: {}", msg))
+            }
+            RpcError::LocalUsageError(e) => Error::Provider(format!("Local usage error: {}", e)),
+        }
     }
 }
 
-// Convert JSON errors
-impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Error::InvalidInput(err.to_string())
-    }
-}
-
-// Convert general errors from eyre
-impl From<eyre::Report> for Error {
-    fn from(err: eyre::Report) -> Self {
-        Error::Server(err.to_string())
-    }
-}
+// Other From implementations remain the same...
