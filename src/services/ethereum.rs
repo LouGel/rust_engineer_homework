@@ -165,3 +165,136 @@ fn format_ether(wei: u128) -> String {
     let ether_value = wei as f64 / WEI_PER_ETH;
     format!("{:.18}", ether_value)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    // Helper function to create a test config
+    fn create_test_config() -> AppConfig {
+        AppConfig {
+            ethereum_rpc_url: "https://eth.llamarpc.com".to_string(),
+            cache_duration: Duration::from_secs(15),
+            host: std::net::IpAddr::from_str("127.0.0.1").unwrap(),
+            port: 8080,
+            log_level: "debug".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_valid_eth_transfer() {
+        let config = create_test_config();
+        let service = EthereumService::new(&config).await.unwrap();
+
+        let tx = TransactionInput {
+            from: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".to_string(),
+            to: "0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5".to_string(),
+            value: Some("1000000000000000".to_string()), // 0.001 ETH
+            data: Some("0x".to_string()),
+            gas_price: None,
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
+            _nonce: None,
+        };
+
+        let result = service.estimate_gas(tx).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_eth_transfer_to_contract() {
+        let config = create_test_config();
+        let service = EthereumService::new(&config).await.unwrap();
+
+        let tx = TransactionInput {
+            from: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".to_string(),
+            to: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(), // USDT contract
+            value: Some("1000000000000000".to_string()),
+            data: Some("0x".to_string()),
+            gas_price: None,
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
+            _nonce: None,
+        };
+
+        let result = service.estimate_gas(tx).await;
+        assert!(result.is_err());
+        // Check if error contains "execution reverted"
+        match result {
+            Err(Error::GasEstimation(msg)) => {
+                assert!(msg.contains("execution reverted"));
+            }
+            _ => panic!("Expected GasEstimation error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_erc20_approve() {
+        let config = create_test_config();
+        let service = EthereumService::new(&config).await.unwrap();
+
+        let tx = TransactionInput {
+            from: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".to_string(),
+            to: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string(), // USDC contract
+            value: Some("0".to_string()),
+            data: Some("0x095ea7b3000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec700000000000000000000000000000000000000000000000000000000000003e8".to_string()),
+            gas_price: None,
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
+            _nonce: None,
+        };
+
+        let result = service.estimate_gas(tx).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_address() {
+        let config = create_test_config();
+        let service = EthereumService::new(&config).await.unwrap();
+
+        let tx = TransactionInput {
+            from: "invalid_address".to_string(),
+            to: "0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5".to_string(),
+            value: Some("1000000000000000".to_string()),
+            data: Some("0x".to_string()),
+            gas_price: None,
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
+            _nonce: None,
+        };
+
+        let result = service.estimate_gas(tx).await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::InvalidInput(msg)) => {
+                assert!(msg.contains("Invalid address"));
+            }
+            _ => panic!("Expected InvalidInput error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_eip1559_transaction() {
+        let config = create_test_config();
+        let service = EthereumService::new(&config).await.unwrap();
+
+        let tx = TransactionInput {
+            from: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".to_string(),
+            to: "0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5".to_string(),
+            value: Some("1000000000000000".to_string()),
+            data: Some("0x".to_string()),
+            gas_price: None,
+            max_fee_per_gas: Some("50000000000".to_string()), // 50 Gwei
+            max_priority_fee_per_gas: Some("2000000000".to_string()), // 2 Gwei
+            _nonce: None,
+        };
+
+        let result = service.estimate_gas(tx).await;
+        assert!(result.is_ok());
+        if let Ok(estimation) = result {
+            assert_eq!(estimation.type_of_transaction, "eip1559");
+        }
+    }
+}
